@@ -10,16 +10,21 @@ use std::time::Duration;
 use std::fs;
 use std::io;
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
-const DOTHUB_DIR: &str = "/usr/local/share/dothub";
+const DEFAULT_DOTHUB_PATH: &str = ".local/share/dothub";
 const DEFAULT_HUB_URL: &str =
-    "https://raw.githubusercontent.com/huncholane/dothub/refs/heads/main/hub.yml";
+    "https://raw.githubusercontent.com/huncholane/dothub/main/hub.yml";
 const GH_TOKEN_HELP_URL: &str = "https://github.com/settings/personal-access-tokens";
 
 #[derive(Parser)]
-#[command(name = "dothub", about = "Manage dotfile repos and links", version)]
+#[command(
+    name = "dothub",
+    about = "Manage dotfile repos and links",
+    version,
+    after_help = "Environment variables:\n  DOTHUB_DIR     Override the store directory (default: XDG data dir, e.g. ~/.local/share/dothub)\n  GITHUB_TOKEN   GitHub token to speed up star fetching via GraphQL (optional)"
+)]
 struct Cli {
     /// Optional filter: types to include (e.g. nvim, tmux). Comma-separated or space-separated.
     #[arg(value_name = "TYPE", num_args = 0.., value_delimiter = ',')]
@@ -44,6 +49,8 @@ enum Commands {
     Active,
     /// List repositories installed in the dothub store
     List,
+    /// Remove a repository from the dothub store
+    Remove(RemoveArgs),
     /// Generate shell completions to stdout (bash|zsh|fish|powershell|elvish)
     Completions { shell: Shell },
 }
@@ -64,6 +71,12 @@ struct LinkArgs {
     target: String,
 }
 
+#[derive(Args)]
+struct RemoveArgs {
+    /// Repository name stored under dothub to remove
+    name: String,
+}
+
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
 enum Shell {
     Bash,
@@ -82,16 +95,31 @@ fn main() -> Result<()> {
         Some(Commands::Update) => cmd_update(),
         Some(Commands::Active) => cmd_active(),
         Some(Commands::List) => cmd_list(),
+        Some(Commands::Remove(args)) => cmd_remove(&args.name),
         Some(Commands::Completions { shell }) => cmd_completions(shell),
         None => cmd_hub(cli.types, cli.url),
     }
 }
 
+fn dothub_dir() -> PathBuf {
+    if let Ok(p) = env::var("DOTHUB_DIR") {
+        return PathBuf::from(p);
+    }
+    if let Some(mut data) = dirs::data_dir() {
+        data.push("dothub");
+        return data;
+    }
+    if let Some(mut home) = dirs::home_dir() {
+        home.push(DEFAULT_DOTHUB_PATH);
+        return home;
+    }
+    PathBuf::from(".dothub")
+}
+
 fn ensure_store_dir() -> Result<()> {
-    let path = Path::new(DOTHUB_DIR);
+    let path = dothub_dir();
     if !path.exists() {
-        fs::create_dir_all(path)
-            .with_context(|| format!("Failed creating {} (need sudo?)", DOTHUB_DIR))?;
+        fs::create_dir_all(&path).with_context(|| format!("Failed creating {}", path.display()))?;
     }
     Ok(())
 }
@@ -110,7 +138,7 @@ fn cmd_install(repo: &str) -> Result<()> {
         bail!("Could not infer repository name from URL: {}", repo);
     }
 
-    let dest = Path::new(DOTHUB_DIR).join(&name);
+    let dest = dothub_dir().join(&name);
     if dest.exists() {
         println!("Repo already exists: {}", dest.display());
         return Ok(());
@@ -136,7 +164,7 @@ fn cmd_install(repo: &str) -> Result<()> {
 }
 
 fn cmd_link(name: &str, target_name: &str) -> Result<()> {
-    let source = Path::new(DOTHUB_DIR).join(name);
+    let source = dothub_dir().join(name);
     if !source.exists() {
         bail!("Source repo not found: {}", source.display());
     }
@@ -198,11 +226,11 @@ fn cmd_update() -> Result<()> {
         bail!("git is not installed or not found in PATH");
     }
 
-    let root = Path::new(DOTHUB_DIR);
+    let root = dothub_dir();
     let mut updated = 0usize;
     let mut skipped = 0usize;
 
-    for entry in fs::read_dir(root).with_context(|| format!("Reading {}", DOTHUB_DIR))? {
+    for entry in fs::read_dir(&root).with_context(|| format!("Reading {}", root.display()))? {
         let entry = entry?;
         let path = entry.path();
         if !path.is_dir() {
@@ -306,7 +334,8 @@ fn cmd_active() -> Result<()> {
 
         let resolved = abs_target.canonicalize().unwrap_or(abs_target.clone());
 
-        if resolved.starts_with(DOTHUB_DIR) {
+        let store = dothub_dir();
+        if resolved.starts_with(&store) {
             let name = path
                 .file_name()
                 .and_then(|s| s.to_str())
@@ -328,9 +357,9 @@ fn cmd_active() -> Result<()> {
 
 fn cmd_list() -> Result<()> {
     ensure_store_dir()?;
-    let root = Path::new(DOTHUB_DIR);
+    let root = dothub_dir();
     let mut repos: Vec<String> = Vec::new();
-    for entry in fs::read_dir(root).with_context(|| format!("Reading {}", DOTHUB_DIR))? {
+    for entry in fs::read_dir(&root).with_context(|| format!("Reading {}", root.display()))? {
         let entry = entry?;
         let path = entry.path();
         if !path.is_dir() {
@@ -344,12 +373,30 @@ fn cmd_list() -> Result<()> {
     }
     repos.sort();
     if repos.is_empty() {
-        println!("No repositories installed in {}.", DOTHUB_DIR);
+        println!("No repositories installed in {}.", root.display());
     } else {
         for r in repos {
             println!("{}", r);
         }
     }
+    Ok(())
+}
+
+fn cmd_remove(name: &str) -> Result<()> {
+    ensure_store_dir()?;
+    let path = dothub_dir().join(name);
+    if !path.exists() {
+        bail!("Repository not found: {}", path.display());
+    }
+    let md = fs::symlink_metadata(&path).with_context(|| format!("stat {}", path.display()))?;
+    if md.is_dir() {
+        fs::remove_dir_all(&path)
+            .with_context(|| format!("Removing directory {}", path.display()))?;
+    } else {
+        fs::remove_file(&path)
+            .with_context(|| format!("Removing file {}", path.display()))?;
+    }
+    println!("Removed {}", name);
     Ok(())
 }
 
@@ -436,7 +483,7 @@ fn cmd_hub(types: Vec<String>, url: Option<String>) -> Result<()> {
     for (idx, (_ty, link, stars)) in detailed.into_iter().enumerate() {
         let rank = (idx + 1).to_string();
         let name = derive_repo_name(&link);
-        let installed = Path::new(DOTHUB_DIR).join(&name).exists();
+        let installed = dothub_dir().join(&name).exists();
         let installed_str = if installed { "y" } else { "n" };
         table.add_row(vec![rank, stars.to_string(), installed_str.to_string(), link]);
     }
