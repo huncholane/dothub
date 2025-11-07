@@ -14,16 +14,22 @@ use std::path::Path;
 use std::process::Command;
 
 const DOTHUB_DIR: &str = "/usr/local/share/dothub";
-const DEFAULT_FLEX_URL: &str =
-    "https://raw.githubusercontent.com/huncholane/dothub/refs/heads/main/flex.yml";
+const DEFAULT_HUB_URL: &str =
+    "https://raw.githubusercontent.com/huncholane/dothub/refs/heads/main/hub.yml";
 const GH_TOKEN_HELP_URL: &str = "https://github.com/settings/personal-access-tokens";
 
 #[derive(Parser)]
 #[command(name = "dothub", about = "Manage dotfile repos and links", version)]
-#[command(arg_required_else_help = true)]
 struct Cli {
+    /// Optional filter: types to include (e.g. nvim, tmux). Comma-separated or space-separated.
+    #[arg(value_name = "TYPE", num_args = 0.., value_delimiter = ',')]
+    types: Vec<String>,
+    /// Optional override URL to YAML (defaults to https://github.com/hub.yml)
+    #[arg(long)]
+    url: Option<String>,
+
     #[command(subcommand)]
-    command: Commands,
+    command: Option<Commands>,
 }
 
 #[derive(Subcommand)]
@@ -38,21 +44,11 @@ enum Commands {
     Active,
     /// List repositories installed in the dothub store
     List,
-    /// Fetch and list repos from flex.yml (remote), sorted by GitHub stars
-    Flex(FlexArgs),
     /// Generate shell completions to stdout (bash|zsh|fish|powershell|elvish)
     Completions { shell: Shell },
 }
 
-#[derive(Args)]
-struct FlexArgs {
-    /// Optional filter: types to include (e.g. nvim, tmux)
-    #[arg(value_name = "TYPE", num_args = 0.., value_delimiter = ',')]
-    types: Vec<String>,
-    /// Optional override URL to YAML (defaults to https://github.com/flex.yml)
-    #[arg(long)]
-    url: Option<String>,
-}
+// No separate args struct for hub; top-level args cover it
 
 #[derive(Args)]
 struct InstallArgs {
@@ -81,13 +77,13 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Install(args) => cmd_install(&args.repo),
-        Commands::Link(args) => cmd_link(&args.name, &args.target),
-        Commands::Update => cmd_update(),
-        Commands::Active => cmd_active(),
-        Commands::List => cmd_list(),
-        Commands::Flex(args) => cmd_flex(args),
-        Commands::Completions { shell } => cmd_completions(shell),
+        Some(Commands::Install(args)) => cmd_install(&args.repo),
+        Some(Commands::Link(args)) => cmd_link(&args.name, &args.target),
+        Some(Commands::Update) => cmd_update(),
+        Some(Commands::Active) => cmd_active(),
+        Some(Commands::List) => cmd_list(),
+        Some(Commands::Completions { shell }) => cmd_completions(shell),
+        None => cmd_hub(cli.types, cli.url),
     }
 }
 
@@ -364,20 +360,20 @@ enum FlexEntry {
     Many(Vec<String>),
 }
 
-fn cmd_flex(args: FlexArgs) -> Result<()> {
-    let url = args.url.as_deref().unwrap_or(DEFAULT_FLEX_URL);
+fn cmd_hub(types: Vec<String>, url: Option<String>) -> Result<()> {
+    let url = url.as_deref().unwrap_or(DEFAULT_HUB_URL);
     let yaml = match fetch_text(url) {
         Ok(text) => text,
         Err(_) => {
-            eprintln!("\x1b[31mFailed to fetch the flex file. Please enure you have internet connection.\x1b[0m");
+            eprintln!("\x1b[31mFailed to fetch the hub file. Please ensure you have internet connection.\x1b[0m");
             std::process::exit(1);
         }
     };
 
     let map: HashMap<String, FlexEntry> =
-        serde_yaml::from_str(&yaml).context("Parsing YAML for flex")?;
+        serde_yaml::from_str(&yaml).context("Parsing YAML for hub")?;
 
-    let filters: Vec<String> = args.types.iter().map(|s| s.to_lowercase()).collect();
+    let filters: Vec<String> = types.iter().map(|s| s.to_lowercase()).collect();
 
     // Flatten entries into (type, url)
     let mut items: Vec<(String, String)> = Vec::new();
@@ -448,12 +444,14 @@ fn cmd_flex(args: FlexArgs) -> Result<()> {
     println!("{}", table);
     if token.is_none() {
         println!(
-            "\x1b[33mTo improve flex performance, please set your GITHUB_TOKEN environment variable.\nObtain token at {GH_TOKEN_HELP_URL}\x1b[0m"
+            "\x1b[33mTo improve performance, please set your GITHUB_TOKEN environment variable.\nLearn more: {}\x1b[0m",
+            GH_TOKEN_HELP_URL
         );
     }
     if warn_graphql_failed {
         println!(
-            "\x1b[33mGITHUB_TOKEN detected but GitHub GraphQL failed; falling back to REST.\nObtain token at {GH_TOKEN_HELP_URL}\x1b[0m"
+            "\x1b[33mGITHUB_TOKEN detected but GitHub GraphQL failed; falling back to REST.\nLearn more: {}\x1b[0m",
+            GH_TOKEN_HELP_URL
         );
     }
 
