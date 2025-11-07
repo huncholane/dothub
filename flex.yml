@@ -1,0 +1,10 @@
+---
+# Example local fallback for dotman flex
+# key: dotfile type, value: repo URL or list of URLs
+nvim:
+  - https://github.com/hygo-nvim
+  - https://github.com/LazyVim/LazyVim
+tmux: https://github.com/gpakosz/.tmux
+zsh:
+  - https://github.com/ohmyzsh/ohmyzsh
+  - https://github.com/sorin-ionescu/prezto

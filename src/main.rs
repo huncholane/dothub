@@ -5,8 +5,10 @@ use std::fs;
 use std::io;
 use std::path::Path;
 use std::process::Command;
+use std::collections::HashMap;
 
 const DOTMAN_DIR: &str = "/usr/local/share/dotman";
+const DEFAULT_FLEX_URL: &str = "https://github.com/flex.yml";
 
 #[derive(Parser)]
 #[command(name = "dotman", about = "Manage dotfile repos and links", version)]
@@ -28,8 +30,20 @@ enum Commands {
     Active,
     /// List repositories installed in the dotman store
     List,
+    /// Fetch and list repos from flex.yml (remote), sorted by GitHub stars
+    Flex(FlexArgs),
     /// Generate shell completions to stdout (bash|zsh|fish|powershell|elvish)
     Completions { shell: Shell },
+}
+
+#[derive(Args)]
+struct FlexArgs {
+    /// Optional filter: types to include (e.g. nvim, tmux)
+    #[arg(value_name = "TYPE", num_args = 0.., value_delimiter = ',')]
+    types: Vec<String>,
+    /// Optional override URL to YAML (defaults to https://github.com/flex.yml)
+    #[arg(long)]
+    url: Option<String>,
 }
 
 #[derive(Args)]
@@ -64,6 +78,7 @@ fn main() -> Result<()> {
         Commands::Update => cmd_update(),
         Commands::Active => cmd_active(),
         Commands::List => cmd_list(),
+        Commands::Flex(args) => cmd_flex(args),
         Commands::Completions { shell } => cmd_completions(shell),
     }
 }
@@ -329,4 +344,106 @@ fn cmd_list() -> Result<()> {
         for r in repos { println!("{}", r); }
     }
     Ok(())
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(untagged)]
+enum FlexEntry {
+    Single(String),
+    Many(Vec<String>),
+}
+
+fn cmd_flex(args: FlexArgs) -> Result<()> {
+    let url = args.url.as_deref().unwrap_or(DEFAULT_FLEX_URL);
+    let yaml = fetch_text(url).or_else(|_| {
+        // Fallback to local flex.yml if remote fails
+        fs::read_to_string("flex.yml").context("Failed to fetch and failed to read local flex.yml")
+    })?;
+
+    let map: HashMap<String, FlexEntry> = serde_yaml::from_str(&yaml)
+        .context("Parsing YAML for flex")?;
+
+    let filters: Vec<String> = args.types.iter().map(|s| s.to_lowercase()).collect();
+
+    // Flatten entries into (type, url)
+    let mut items: Vec<(String, String)> = Vec::new();
+    for (ty, entry) in map.into_iter() {
+        if !filters.is_empty() && !filters.contains(&ty.to_lowercase()) {
+            continue;
+        }
+        match entry {
+            FlexEntry::Single(u) => items.push((ty.clone(), u)),
+            FlexEntry::Many(v) => {
+                for u in v { items.push((ty.clone(), u)); }
+            }
+        }
+    }
+
+    // Collect stars (best-effort)
+    let mut detailed: Vec<(String, String, u64)> = Vec::with_capacity(items.len());
+    for (ty, link) in items {
+        let stars = github_stars(&link).unwrap_or(0);
+        detailed.push((ty, link, stars));
+    }
+
+    // Sort by stars desc
+    detailed.sort_by(|a, b| b.2.cmp(&a.2));
+
+    for (ty, link, stars) in detailed {
+        if stars > 0 {
+            println!("{} | {} ⭐ -> {}", ty, stars, link);
+        } else {
+            println!("{} | - -> {}", ty, link);
+        }
+    }
+
+    Ok(())
+}
+
+fn fetch_text(url: &str) -> Result<String> {
+    let client = reqwest::blocking::Client::builder()
+        .user_agent("dotman/0.1")
+        .build()
+        .context("building http client")?;
+    let resp = client.get(url).send().with_context(|| format!("GET {}", url))?;
+    if !resp.status().is_success() {
+        bail!("HTTP {} for {}", resp.status(), url);
+    }
+    let text = resp.text().context("reading response body")?;
+    Ok(text)
+}
+
+fn github_stars(link: &str) -> Result<u64> {
+    // Expect forms like https://github.com/owner/repo or git@github.com:owner/repo.git
+    let lower = link.to_lowercase();
+    if !lower.contains("github.com") { bail!("not github"); }
+
+    // Try to extract owner/repo
+    let (owner, repo) = if let Ok(parsed) = url::Url::parse(link) {
+        if parsed.domain().unwrap_or("") != "github.com" { bail!("not github"); }
+        let mut segs = parsed.path_segments().ok_or_else(|| anyhow::anyhow!("no path"))?;
+        let owner = segs.next().ok_or_else(|| anyhow::anyhow!("no owner"))?;
+        let mut repo = segs.next().ok_or_else(|| anyhow::anyhow!("no repo"))?;
+        if let Some(stripped) = repo.strip_suffix('.').or_else(|| repo.strip_suffix(".git")) { repo = stripped; }
+        (owner.to_string(), repo.to_string())
+    } else if let Some(rest) = lower.strip_prefix("git@github.com:") {
+        let parts: Vec<&str> = rest.split('/').collect();
+        if parts.len() < 2 { bail!("not owner/repo"); }
+        let mut repo = parts[1].to_string();
+        if let Some(stripped) = repo.strip_suffix('.').or_else(|| repo.strip_suffix(".git")) { repo = stripped.to_string(); }
+        (parts[0].to_string(), repo)
+    } else {
+        bail!("unrecognized github url");
+    };
+
+    let api = format!("https://api.github.com/repos/{}/{}", owner, repo);
+    let client = reqwest::blocking::Client::builder()
+        .user_agent("dotman/0.1")
+        .build()
+        .context("building http client")?;
+    let resp = client.get(&api).send().with_context(|| format!("GET {}", api))?;
+    if !resp.status().is_success() { bail!("bad status") }
+    let v: serde_json::Value = resp.json().context("parsing github json")?;
+    let stars = v.get("stargazers_count").and_then(|n| n.as_u64()).unwrap_or(0);
+    Ok(stars)
 }
