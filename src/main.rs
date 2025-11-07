@@ -26,6 +26,8 @@ enum Commands {
     Update,
     /// List active links in ~/.config that point into dotman
     Active,
+    /// List repositories installed in the dotman store
+    List,
     /// Generate shell completions to stdout (bash|zsh|fish|powershell|elvish)
     Completions { shell: Shell },
 }
@@ -61,6 +63,7 @@ fn main() -> Result<()> {
         Commands::Link(args) => cmd_link(&args.name, &args.target),
         Commands::Update => cmd_update(),
         Commands::Active => cmd_active(),
+        Commands::List => cmd_list(),
         Commands::Completions { shell } => cmd_completions(shell),
     }
 }
@@ -301,6 +304,29 @@ fn cmd_active() -> Result<()> {
         for (name, target) in found {
             println!("{} -> {}", name, target.display());
         }
+    }
+    Ok(())
+}
+
+fn cmd_list() -> Result<()> {
+    ensure_dotman_dir()?;
+    let root = Path::new(DOTMAN_DIR);
+    let mut repos: Vec<String> = Vec::new();
+    for entry in fs::read_dir(root).with_context(|| format!("Reading {}", DOTMAN_DIR))? {
+        let entry = entry?;
+        let path = entry.path();
+        if !path.is_dir() { continue; }
+        let name = match path.file_name().and_then(|s| s.to_str()) {
+            Some(s) => s.to_string(),
+            None => continue,
+        };
+        repos.push(name);
+    }
+    repos.sort();
+    if repos.is_empty() {
+        println!("No repositories installed in {}.", DOTMAN_DIR);
+    } else {
+        for r in repos { println!("{}", r); }
     }
     Ok(())
 }
