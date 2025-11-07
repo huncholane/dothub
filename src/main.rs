@@ -17,6 +17,7 @@ const DEFAULT_DOTHUB_PATH: &str = ".local/share/dothub";
 const DEFAULT_HUB_URL: &str =
     "https://raw.githubusercontent.com/huncholane/dothub/main/hub.yml";
 const GH_TOKEN_HELP_URL: &str = "https://github.com/settings/personal-access-tokens";
+const ASCII_BANNER: &str = include_str!("../ascii.txt");
 
 #[derive(Parser)]
 #[command(
@@ -408,6 +409,8 @@ enum FlexEntry {
 }
 
 fn cmd_hub(types: Vec<String>, url: Option<String>) -> Result<()> {
+    // Print ASCII banner at the top
+    println!("{}", ASCII_BANNER);
     let url = url.as_deref().unwrap_or(DEFAULT_HUB_URL);
     let yaml = match fetch_text(url) {
         Ok(text) => text,
