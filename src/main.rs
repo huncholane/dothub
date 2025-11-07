@@ -3,14 +3,20 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 use clap_complete::{generate, shells};
 use std::collections::HashMap;
 use comfy_table::{Table, presets::UTF8_BORDERS_ONLY, modifiers::UTF8_ROUND_CORNERS};
+use std::env;
+use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+use std::thread;
+use std::time::Duration;
 use std::fs;
 use std::io;
+use std::io::Write;
 use std::path::Path;
 use std::process::Command;
 
 const DOTMAN_DIR: &str = "/usr/local/share/dotman";
 const DEFAULT_FLEX_URL: &str =
     "https://raw.githubusercontent.com/huncholane/dotman/refs/heads/main/flex.yml";
+const GH_TOKEN_HELP_URL: &str = "https://github.com/settings/personal-access-tokens";
 
 #[derive(Parser)]
 #[command(name = "dotman", about = "Manage dotfile repos and links", version)]
@@ -389,12 +395,40 @@ fn cmd_flex(args: FlexArgs) -> Result<()> {
         }
     }
 
-    // Collect stars (best-effort)
+    // Collect stars efficiently (GraphQL when token present; REST fallback otherwise)
+    let token = env::var("GITHUB_TOKEN").ok();
+    let mut warn_graphql_failed = false;
+    // Show a spinner during star fetching
+    let spinner_stop = start_spinner("Downloading stars from github..");
+
     let mut detailed: Vec<(String, String, u64)> = Vec::with_capacity(items.len());
-    for (ty, link) in items {
-        let stars = github_stars(&link).unwrap_or(0);
-        detailed.push((ty, link, stars));
+    if let Some(ref t) = token {
+        let links_only: Vec<String> = items.iter().map(|(_, l)| l.clone()).collect();
+        match github_stars_batch(&links_only, Some(t.as_str())) {
+            Ok(stars_map) => {
+                for (ty, link) in items {
+                    let stars = *stars_map.get(&link).unwrap_or(&0);
+                    detailed.push((ty, link, stars));
+                }
+            }
+            Err(_) => {
+                warn_graphql_failed = true;
+                for (ty, link) in items {
+                    let stars = github_stars(&link).unwrap_or(0);
+                    detailed.push((ty, link, stars));
+                }
+            }
+        }
+    } else {
+        for (ty, link) in items {
+            let stars = github_stars(&link).unwrap_or(0);
+            detailed.push((ty, link, stars));
+        }
     }
+
+    spinner_stop.store(true, Ordering::SeqCst);
+    // Leave the last line in place; print a newline to cleanly end spinner
+    eprintln!("");
 
     // Sort by stars desc
     detailed.sort_by(|a, b| b.2.cmp(&a.2));
@@ -412,8 +446,38 @@ fn cmd_flex(args: FlexArgs) -> Result<()> {
     }
 
     println!("{}", table);
+    if token.is_none() {
+        println!(
+            "\x1b[33mTo improve flex performance, please set your GITHUB_TOKEN environment variable.\nObtain token at {GH_TOKEN_HELP_URL}\x1b[0m"
+        );
+    }
+    if warn_graphql_failed {
+        println!(
+            "\x1b[33mGITHUB_TOKEN detected but GitHub GraphQL failed; falling back to REST.\nObtain token at {GH_TOKEN_HELP_URL}\x1b[0m"
+        );
+    }
 
     Ok(())
+}
+
+fn start_spinner(message: &str) -> Arc<AtomicBool> {
+    let stop = Arc::new(AtomicBool::new(false));
+    let stop_clone = Arc::clone(&stop);
+    let msg = message.to_string();
+    thread::spawn(move || {
+        let frames = ["-", "\\", "|", "/"]; // simple spinner
+        let mut i = 0usize;
+        // Print initial line
+        eprint!("{} {}\r", frames[i % frames.len()], msg);
+        let _ = std::io::stderr().flush();
+        while !stop_clone.load(Ordering::SeqCst) {
+            i = (i + 1) % frames.len();
+            eprint!("{} {}\r", frames[i], msg);
+            let _ = std::io::stderr().flush();
+            thread::sleep(Duration::from_millis(120));
+        }
+    });
+    stop
 }
 
 fn fetch_text(url: &str) -> Result<String> {
@@ -495,4 +559,97 @@ fn github_stars(link: &str) -> Result<u64> {
         .and_then(|n| n.as_u64())
         .unwrap_or(0);
     Ok(stars)
+}
+
+fn parse_github_owner_repo(link: &str) -> Option<(String, String)> {
+    let lower = link.to_lowercase();
+    if !lower.contains("github.com") {
+        return None;
+    }
+    if let Ok(parsed) = url::Url::parse(link) {
+        if parsed.domain().unwrap_or("") != "github.com" {
+            return None;
+        }
+        let mut segs = parsed.path_segments()?;
+        let owner = segs.next()?.to_string();
+        if let Some(mut repo) = segs.next() {
+            if let Some(stripped) = repo.strip_suffix('.').or_else(|| repo.strip_suffix(".git")) {
+                repo = stripped;
+            }
+            return Some((owner, repo.to_string()));
+        } else {
+            return Some((owner.clone(), owner));
+        }
+    } else if let Some(rest) = lower.strip_prefix("git@github.com:") {
+        let parts: Vec<&str> = rest.split('/').collect();
+        if parts.len() >= 2 {
+            let mut repo = parts[1].to_string();
+            if let Some(stripped) = repo.strip_suffix('.').or_else(|| repo.strip_suffix(".git")) {
+                repo = stripped.to_string();
+            }
+            return Some((parts[0].to_string(), repo));
+        } else if parts.len() == 1 {
+            let owner = parts[0].to_string();
+            return Some((owner.clone(), owner));
+        }
+    }
+    None
+}
+
+fn github_stars_batch(links: &[String], token: Option<&str>) -> Result<HashMap<String, u64>> {
+    let mut entries: Vec<(String, (String, String))> = Vec::new();
+    for l in links {
+        if let Some((o, r)) = parse_github_owner_repo(l) {
+            entries.push((l.clone(), (o, r)));
+        }
+    }
+    if entries.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let client = reqwest::blocking::Client::builder()
+        .user_agent("dotman/0.1")
+        .build()
+        .context("building http client")?;
+
+    let mut out: HashMap<String, u64> = HashMap::new();
+
+    for chunk in entries.chunks(50) {
+        let mut q = String::from("query { ");
+        for (i, (_link, (owner, repo))) in chunk.iter().enumerate() {
+            let alias = format!("r{}", i);
+            let owner_esc = owner.replace('"', "\\\"");
+            let repo_esc = repo.replace('"', "\\\"");
+            q.push_str(&format!(
+                "{}: repository(owner:\"{}\", name:\"{}\") {{ stargazerCount }} ",
+                alias, owner_esc, repo_esc
+            ));
+        }
+        q.push('}');
+
+        let mut req = client
+            .post("https://api.github.com/graphql")
+            .json(&serde_json::json!({"query": q}));
+        if let Some(t) = token {
+            req = req.header("Authorization", format!("Bearer {}", t));
+        }
+        let resp = req.send().context("graphql request failed")?;
+        if !resp.status().is_success() {
+            return Err(anyhow::anyhow!("graphql status {}", resp.status()));
+        }
+        let v: serde_json::Value = resp.json().context("parse graphql json")?;
+        if let Some(data) = v.get("data").and_then(|d| d.as_object()) {
+            for (i, (link, _)) in chunk.iter().enumerate() {
+                let alias = format!("r{}", i);
+                let count = data
+                    .get(&alias)
+                    .and_then(|obj| obj.get("stargazerCount"))
+                    .and_then(|n| n.as_u64())
+                    .unwrap_or(0);
+                out.insert(link.clone(), count);
+            }
+        }
+    }
+
+    Ok(out)
 }
