@@ -355,10 +355,13 @@ enum FlexEntry {
 
 fn cmd_flex(args: FlexArgs) -> Result<()> {
     let url = args.url.as_deref().unwrap_or(DEFAULT_FLEX_URL);
-    let yaml = fetch_text(url).or_else(|_| {
-        // Fallback to local flex.yml if remote fails
-        fs::read_to_string("flex.yml").context("Failed to fetch and failed to read local flex.yml")
-    })?;
+    let yaml = match fetch_text(url) {
+        Ok(text) => text,
+        Err(_) => {
+            eprintln!("\x1b[31mFailed to fetch the flex file. Please enure you have internet connection.\x1b[0m");
+            std::process::exit(1);
+        }
+    };
 
     let map: HashMap<String, FlexEntry> = serde_yaml::from_str(&yaml)
         .context("Parsing YAML for flex")?;
