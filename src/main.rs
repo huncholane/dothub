@@ -1,14 +1,15 @@
 use anyhow::{bail, Context, Result};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use clap_complete::{generate, shells};
+use std::collections::HashMap;
 use std::fs;
 use std::io;
 use std::path::Path;
 use std::process::Command;
-use std::collections::HashMap;
 
 const DOTMAN_DIR: &str = "/usr/local/share/dotman";
-const DEFAULT_FLEX_URL: &str = "https://raw.githubusercontent.com/huncholane/dotman/refs/heads/main/flex.yml";
+const DEFAULT_FLEX_URL: &str =
+    "https://raw.githubusercontent.com/huncholane/dotman/refs/heads/main/flex.yml";
 
 #[derive(Parser)]
 #[command(name = "dotman", about = "Manage dotfile repos and links", version)]
@@ -93,13 +94,8 @@ fn ensure_dotman_dir() -> Result<()> {
 }
 
 fn derive_repo_name(repo_url: &str) -> String {
-    let trimmed = repo_url.trim_end_matches('/')
-        .trim_end_matches(".git");
-    trimmed
-        .rsplit('/')
-        .next()
-        .unwrap_or(trimmed)
-        .to_string()
+    let trimmed = repo_url.trim_end_matches('/').trim_end_matches(".git");
+    trimmed.rsplit('/').next().unwrap_or(trimmed).to_string()
 }
 
 fn cmd_install(repo: &str) -> Result<()> {
@@ -160,37 +156,36 @@ fn cmd_link(name: &str, target_name: &str) -> Result<()> {
     // Create symlink
     #[cfg(unix)]
     {
-        std::os::unix::fs::symlink(&source, &target)
-            .with_context(|| format!(
+        std::os::unix::fs::symlink(&source, &target).with_context(|| {
+            format!(
                 "Failed creating symlink {} -> {}",
                 target.display(),
                 source.display()
-            ))?;
+            )
+        })?;
     }
     #[cfg(windows)]
     {
         if source.is_dir() {
-            std::os::windows::fs::symlink_dir(&source, &target)
-                .with_context(|| format!(
+            std::os::windows::fs::symlink_dir(&source, &target).with_context(|| {
+                format!(
                     "Failed creating symlink {} -> {}",
                     target.display(),
                     source.display()
-                ))?;
+                )
+            })?;
         } else {
-            std::os::windows::fs::symlink_file(&source, &target)
-                .with_context(|| format!(
+            std::os::windows::fs::symlink_file(&source, &target).with_context(|| {
+                format!(
                     "Failed creating symlink {} -> {}",
                     target.display(),
                     source.display()
-                ))?;
+                )
+            })?;
         }
     }
 
-    println!(
-        "Linked {} -> {}",
-        source.display(),
-        target.display()
-    );
+    println!("Linked {} -> {}", source.display(), target.display());
     Ok(())
 }
 
@@ -223,7 +218,11 @@ fn cmd_update() -> Result<()> {
         if status.success() {
             updated += 1;
         } else {
-            eprintln!("git pull failed in {} with status {}", path.display(), status);
+            eprintln!(
+                "git pull failed in {} with status {}",
+                path.display(),
+                status
+            );
         }
     }
 
@@ -257,10 +256,11 @@ fn remove_path(path: &Path) -> Result<()> {
         Ok(md) if md.file_type().is_symlink() => {
             fs::remove_file(path).with_context(|| format!("Removing symlink {}", path.display()))
         }
-        Ok(md) if md.is_dir() => {
-            fs::remove_dir_all(path).with_context(|| format!("Removing directory {}", path.display()))
+        Ok(md) if md.is_dir() => fs::remove_dir_all(path)
+            .with_context(|| format!("Removing directory {}", path.display())),
+        Ok(_md) => {
+            fs::remove_file(path).with_context(|| format!("Removing file {}", path.display()))
         }
-        Ok(_md) => fs::remove_file(path).with_context(|| format!("Removing file {}", path.display())),
         Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
         Err(e) => Err(e).with_context(|| format!("Accessing {}", path.display())),
     }
@@ -275,8 +275,8 @@ fn cmd_active() -> Result<()> {
     }
 
     let mut found = Vec::new();
-    for entry in fs::read_dir(&config_dir)
-        .with_context(|| format!("Reading {}", config_dir.display()))?
+    for entry in
+        fs::read_dir(&config_dir).with_context(|| format!("Reading {}", config_dir.display()))?
     {
         let entry = entry?;
         let path = entry.path();
@@ -330,7 +330,9 @@ fn cmd_list() -> Result<()> {
     for entry in fs::read_dir(root).with_context(|| format!("Reading {}", DOTMAN_DIR))? {
         let entry = entry?;
         let path = entry.path();
-        if !path.is_dir() { continue; }
+        if !path.is_dir() {
+            continue;
+        }
         let name = match path.file_name().and_then(|s| s.to_str()) {
             Some(s) => s.to_string(),
             None => continue,
@@ -341,7 +343,9 @@ fn cmd_list() -> Result<()> {
     if repos.is_empty() {
         println!("No repositories installed in {}.", DOTMAN_DIR);
     } else {
-        for r in repos { println!("{}", r); }
+        for r in repos {
+            println!("{}", r);
+        }
     }
     Ok(())
 }
@@ -363,8 +367,8 @@ fn cmd_flex(args: FlexArgs) -> Result<()> {
         }
     };
 
-    let map: HashMap<String, FlexEntry> = serde_yaml::from_str(&yaml)
-        .context("Parsing YAML for flex")?;
+    let map: HashMap<String, FlexEntry> =
+        serde_yaml::from_str(&yaml).context("Parsing YAML for flex")?;
 
     let filters: Vec<String> = args.types.iter().map(|s| s.to_lowercase()).collect();
 
@@ -377,7 +381,9 @@ fn cmd_flex(args: FlexArgs) -> Result<()> {
         match entry {
             FlexEntry::Single(u) => items.push((ty.clone(), u)),
             FlexEntry::Many(v) => {
-                for u in v { items.push((ty.clone(), u)); }
+                for u in v {
+                    items.push((ty.clone(), u));
+                }
             }
         }
     }
@@ -393,11 +399,9 @@ fn cmd_flex(args: FlexArgs) -> Result<()> {
     detailed.sort_by(|a, b| b.2.cmp(&a.2));
 
     for (ty, link, stars) in detailed {
-        if stars > 0 {
-            println!("{} | {} ⭐ -> {}", ty, stars, link);
-        } else {
-            println!("{} | - -> {}", ty, link);
-        }
+        // Fixed widths: type left-10, stars right-10
+        let star_text = format!("{} ", stars);
+        println!("{:<10}|{:>10} -> {}", ty, star_text, link);
     }
 
     Ok(())
@@ -408,7 +412,10 @@ fn fetch_text(url: &str) -> Result<String> {
         .user_agent("dotman/0.1")
         .build()
         .context("building http client")?;
-    let resp = client.get(url).send().with_context(|| format!("GET {}", url))?;
+    let resp = client
+        .get(url)
+        .send()
+        .with_context(|| format!("GET {}", url))?;
     if !resp.status().is_success() {
         bail!("HTTP {} for {}", resp.status(), url);
     }
@@ -419,34 +426,64 @@ fn fetch_text(url: &str) -> Result<String> {
 fn github_stars(link: &str) -> Result<u64> {
     // Expect forms like https://github.com/owner/repo or git@github.com:owner/repo.git
     let lower = link.to_lowercase();
-    if !lower.contains("github.com") { bail!("not github"); }
+    if !lower.contains("github.com") {
+        bail!("not github");
+    }
 
-    // Try to extract owner/repo
-    let (owner, repo) = if let Ok(parsed) = url::Url::parse(link) {
-        if parsed.domain().unwrap_or("") != "github.com" { bail!("not github"); }
-        let mut segs = parsed.path_segments().ok_or_else(|| anyhow::anyhow!("no path"))?;
-        let owner = segs.next().ok_or_else(|| anyhow::anyhow!("no owner"))?;
-        let mut repo = segs.next().ok_or_else(|| anyhow::anyhow!("no repo"))?;
-        if let Some(stripped) = repo.strip_suffix('.').or_else(|| repo.strip_suffix(".git")) { repo = stripped; }
-        (owner.to_string(), repo.to_string())
+    // Try to extract owner/repo or infer repo if only owner provided
+    let mut try_owner_repo: Option<(String, String)> = None;
+    if let Ok(parsed) = url::Url::parse(link) {
+        if parsed.domain().unwrap_or("") != "github.com" {
+            bail!("not github");
+        }
+        let mut segs = parsed
+            .path_segments()
+            .ok_or_else(|| anyhow::anyhow!("no path"))?;
+        let owner = segs
+            .next()
+            .ok_or_else(|| anyhow::anyhow!("no owner"))?
+            .to_string();
+        if let Some(mut repo) = segs.next() {
+            if let Some(stripped) = repo.strip_suffix('.').or_else(|| repo.strip_suffix(".git")) {
+                repo = stripped;
+            }
+            try_owner_repo = Some((owner, repo.to_string()));
+        } else {
+            // Heuristic: try owner/owner as the repository
+            try_owner_repo = Some((owner.clone(), owner));
+        }
     } else if let Some(rest) = lower.strip_prefix("git@github.com:") {
         let parts: Vec<&str> = rest.split('/').collect();
-        if parts.len() < 2 { bail!("not owner/repo"); }
-        let mut repo = parts[1].to_string();
-        if let Some(stripped) = repo.strip_suffix('.').or_else(|| repo.strip_suffix(".git")) { repo = stripped.to_string(); }
-        (parts[0].to_string(), repo)
-    } else {
-        bail!("unrecognized github url");
-    };
+        if parts.len() >= 2 {
+            let mut repo = parts[1].to_string();
+            if let Some(stripped) = repo.strip_suffix('.').or_else(|| repo.strip_suffix(".git")) {
+                repo = stripped.to_string();
+            }
+            try_owner_repo = Some((parts[0].to_string(), repo));
+        } else if parts.len() == 1 {
+            let owner = parts[0].to_string();
+            try_owner_repo = Some((owner.clone(), owner));
+        }
+    }
+
+    let (owner, repo) = try_owner_repo.ok_or_else(|| anyhow::anyhow!("unrecognized github url"))?;
 
     let api = format!("https://api.github.com/repos/{}/{}", owner, repo);
     let client = reqwest::blocking::Client::builder()
         .user_agent("dotman/0.1")
         .build()
         .context("building http client")?;
-    let resp = client.get(&api).send().with_context(|| format!("GET {}", api))?;
-    if !resp.status().is_success() { bail!("bad status") }
+    let resp = client
+        .get(&api)
+        .send()
+        .with_context(|| format!("GET {}", api))?;
+    if !resp.status().is_success() {
+        bail!("bad status")
+    }
     let v: serde_json::Value = resp.json().context("parsing github json")?;
-    let stars = v.get("stargazers_count").and_then(|n| n.as_u64()).unwrap_or(0);
+    let stars = v
+        .get("stargazers_count")
+        .and_then(|n| n.as_u64())
+        .unwrap_or(0);
     Ok(stars)
 }
