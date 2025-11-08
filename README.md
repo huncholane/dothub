@@ -1,88 +1,146 @@
-dothub
-=====
+<div style="display:flex; justify-content:center; align-items:center; gap:12px; white-space:nowrap;">
+    <a href="https://discord.gg/PdpX3vSHAC" style="display:inline-flex; align-items:center; gap:8px;" target="_blank" rel="noopener noreferrer">
+      discord
+      <img src="https://cdn-icons-png.flaticon.com/128/5968/5968756.png" alt="Discord" style="height:16px;">
+    </a>
+    <span>|</span>
+    <a href="https://crates.io/crates/dothub" style="display:inline-flex; align-items:center; gap:8px;" target="_blank" rel="noopener noreferrer">
+      Crates
+      <img src="https://crates.io/favicon.ico" alt="Crates" style="height:16px;">
+    </a>
+</div>
 
-Minimal dotfile manager with a curated hub browser. Clone and link repos into your config, or browse a YAML-powered index of dotfile setups sorted by GitHub stars.
+---
 
-Features
-- Universal linking: replace `~/.config/<target>` with a symlink to a repo in your store
-- Fast hub view: table of curated repos with star counts, filters, and a loading spinner
-- User-local store by default; configurable via environment
-- Shell completions for bash, zsh, fish, PowerShell, and elvish
+<p align="center">
+  <img src="./doc/banner.png" />
+</p>
 
-Installation
-- User-local (no sudo):
-  - `cargo install --path .`
-- System-wide binary:
-  - `cargo build --release`
-  - `sudo install -m 0755 target/release/dothub /usr/local/bin/dothub`
-- Completions:
-  - Bash: `dothub completions bash | sudo tee /etc/bash_completion.d/dothub > /dev/null`
-  - Zsh: `dothub completions zsh > "${fpath[1]}/_dothub"`
-  - Fish: `dothub completions fish > ~/.config/fish/completions/dothub.fish`
-  - PowerShell: `dothub completions powershell | Out-String | Set-Content $PROFILE.CurrentUserAllHosts`
-  - Elvish: `dothub completions elvish > ~/.elvish/lib/dothub.elv`
+A community driven dotfile management platform. This is a golden opportunity for beginners and experts alike to make contributions to the beloved opensource community. Contributing can be as simple as adding your dotfiles to the hub.yml. Help is also wanted to solve issues and create features.
 
-Environment
-- `DOTHUB_DIR`: override the store path (default resolves to XDG data dir, e.g. `~/.local/share/dothub`).
-- `GITHUB_TOKEN`: optional token to speed up hub star fetching via GraphQL and raise rate limits.
+## Installation
 
-Usage
-- Browse hub (from default hub.yml):
-  - `dothub`
-  - `dothub nvim,tmux` (filtered view)
-- Install a repo into the store:
-  - `dothub install https://github.com/hygo-nvim`
-- Link a repo to your config target:
-  - `dothub link hygo-nvim nvim`  → `~/.config/nvim -> <store>/hygo-nvim`
-- Update all repos in the store:
-  - `dothub update`
-- Show active links under `~/.config` that point into the store:
-  - `dothub active`
-- List or remove installed repos:
-  - `dothub list`
-  - `dothub remove <name>`
-  - Install with explicit name: `dothub install https://github.com/foo/bar my-bar`
+### Prequisites
 
-Commands
-- `dothub [TYPE[,TYPE...]] [--url <yaml-url>]`
-  - Loads a YAML index (default: `https://raw.githubusercontent.com/huncholane/dothub/main/hub.yml`) and prints a table of repos:
-    - Columns: Rank, Stars, Installed (y/n), Source
-    - Spinner shown while fetching
-    - Post-table tips about `GITHUB_TOKEN` as applicable
-  - Filters by type(s) when provided (`nvim,tmux` or `nvim tmux`).
-  - Use `--url` to point at your own index file.
-- `dothub install <repo-url> [name]`
-- `dothub link <name> <target>`
-- `dothub update`
-- `dothub active`
-- `dothub list`
-- `dothub remove <name>`
-- `dothub completions <shell>`
+- Make sure you have the latest version of rust installed
+```bash
+rustup update
+```
+- Make sure cargo is in your PATH
 
-Hub Index Format (hub.yml)
-- A mapping of types to repo URL(s). Example:
-  - `nvim: [https://github.com/hygo-nvim, https://github.com/LazyVim/LazyVim]`
-  - `tmux: https://github.com/gpakosz/.tmux`
-  - `zsh: [https://github.com/ohmyzsh/ohmyzsh, https://github.com/sorin-ionescu/prezto]`
+**Note:** You can configure root to use your default profile's cargo binaries too.
+```bash
+# .zshrc|.bashrc|etc
+export PATH=$PATH:/home/<my_user>/.cargo/bin
+```
+Or simply
+```bash
+export PATH=$PATH:~/.cargo/bin
+```
 
-Stars and Performance
-- Without `GITHUB_TOKEN`: dothub uses REST per repository. Works everywhere but is slower and rate-limited.
-- With `GITHUB_TOKEN`: dothub batches many repos in a single GraphQL request for better speed.
-- Heuristic for owner-only URLs (`https://github.com/<owner>`): dothub tries `<owner>/<owner>`. Prefer explicit `owner/repo` URLs for accurate stars.
-- Generate a token at https://github.com/settings/personal-access-tokens and export it as `GITHUB_TOKEN`.
+### Cargo Install
 
-Store and Permissions
-- Default store is user-local (XDG): `~/.local/share/dothub`.
-- Override with `DOTHUB_DIR` if you want a custom path.
-- Linking targets in your home never require sudo. Installing/updating only require permissions to your chosen store.
+Install via cargo
+```bash
+cargo install dothub
+```
 
-Troubleshooting
-- Hub YAML looks stale:
-  - dothub sends cache-busting headers; if you still see staleness, try a commit-pinned URL or pass a `?ts=<now>` query param with `--url`.
-- Star counts show 0 unexpectedly:
-  - Confirm URLs are repository URLs, not org pages. Add `GITHUB_TOKEN` to avoid REST limits.
-- Permission denied writing the store:
-  - Use the default user-local store or set `DOTHUB_DIR` to a path you own.
+### Manual build
+```bash
+git clone https://github.com/huncholane/dothub
+cd dothub
+cargo install --path .
+```
 
-Uninstall
-- Remove the binary from your PATH (e.g., `/usr/local/bin/dothub`) and delete your local store if desired.
+### yay
+
+Coming Soon
+
+### apt
+
+Coming Soon
+
+### Learn By Example
+
+This example will teach you how to use my personal nvim.
+1. Install the config into dothub
+```bash
+dothub install https://github.com/huncholane/hygo-nvim
+```
+This simply clones the repository to `~/.local/share/dothub/hygo-nvim`.
+
+**Note:** You can tell dothub to install the repo as a specific name.
+```bash
+dothub install https://github.com/huncholane/hygo-nvim best-nvim
+```
+This will clone the repo into `~/.local/share/dothub/best-nvim`
+
+2. Link to your config path
+```bash
+dothub link hygo-nvim nvim
+```
+This deletes whatever you have at `~/.config/nvim` and creates a symbolic link from `~/.local/share/dothub/hygo-nvim` to `~/.config/nvim` make sure you have saved your previous config however you like.
+
+#### More about the example
+
+Make sure you learn all you can about the config you are installing. DotHub will not handle third party setups for you. For example my personal nvim requires you to install [Yazi](https://github.com/sxyazi/yazi), the tui file explorer, so you will likely run into errors whenever you use dotfiles from new people.
+
+Also, people update config files pretty often, so to update yours, simply run `dothub update`. This will go through all of your installed dotfile repos and pull them to reflect the latest changes. **Note:** No feature yet to update specific repos.
+
+## Environment
+
+- **DOTHUB_DIR:** Specifies the path to install dothub repos. Defaults to `~/.local/share/dothub`
+
+This is particularly useful for the root user. If you want the root user to use the same dothub repos as your default user, you can add this to `/root/.zshrc`
+```bash
+# /root/.zshrc
+export DOTHUB_DIR=/home/<default_profile>/.local/share/dothub
+```
+- **GITHUB_TOKEN:** Your [github personal access token](https://github.com/settings/personal-access-tokens). 
+
+Dothub tries to use the github api to retrieve stars and falls back to a less efficient scraping method. You want to set this to make dothub more efficient when using the base `dothub` command.
+
+## Commands
+
+- **dothub:** Displays all dothub profiles in the yml file located on this repo. To register your config files to dothub, fork the repo, make a feature, and submit a pull request. This is a goldmine for first contributions.
+- **dothub install [repo] [optional name]:** Installs a repo to your dothub path.
+- **dothub link [name] [config type]:** Deletes old config files and creates a symbolic link from the dothub path to your config type.
+- **dothub update:** Updates all of your dothub repos. Individual updates coming soon.
+- **dothub active:** Shows all current symbolic links managed by dothub.
+- **dothub list:** Shows all installed dothub repos. Currently just shows the names, more info coming soon.
+- **dothub remove:** Removes a downloaded repo from the dothub dir.
+- **dothub completions [shell type]:** Generates completions for the given shell to stdout.
+- **dothub help:** Brings up the help menu.
+
+## Completions
+
+I am just getting into creating completions. These will get better. Contributors thoroughly encouraged.
+
+### ZSH
+
+Add this to your .zsh file if it doesn't exist. There might be a better way to do this. Contributors thoroughly encouraged.
+```bash
+# Add dothub completions
+mkdir -p ~/.zsh/completions
+fpath+=("$HOME/.zsh/completions")
+autoload -Uz compinit && compinit
+```
+After starting a new shell, run
+```bash
+dothub completions zsh > ~/.zsh/completions
+```
+
+### Help wanted for more guidance
+
+
+## Uninstall
+
+There might be a better way to do this. Idk, haven't put much effort into it. Contributors welcome.
+```bash
+cargo uninstall dothub
+rm -rf ~/.local/share/dothub
+```
+
+---
+#### Attributions
+<a href="https://www.flaticon.com/free-icons/discord" title="discord icons">Discord icons created by Freepik - Flaticon</a>
