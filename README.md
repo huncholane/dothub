@@ -1,13 +1,11 @@
-<p align="center">
-    <a href="https://discord.gg/PdpX3vSHAC">Discord</a>
-    <img style="height:16px" src="https://cdn-icons-png.flaticon.com/128/5968/5968756.png">
-    ·
-    <a href="https://crates.io/crates/dothub">Crates</a>
-    <img style="height:16px" src="https://crates.io/favicon.ico">
-</p>
 <div align="center">
   <img src="./doc/banner.png" />
 </div>
+<p align="center">
+    <a href="https://discord.gg/PdpX3vSHAC">Discord</a>
+    ·
+    <a href="https://crates.io/crates/dothub">Crates</a>
+</p>
 <hr>
 
 A community driven dotfile management platform. This is a golden opportunity for beginners and experts alike to make contributions to the beloved opensource community. Contributing can be as simple as adding your dotfiles to the hub.yml. Help is also wanted to solve issues and create features.
@@ -20,7 +18,7 @@ A community driven dotfile management platform. This is a golden opportunity for
 ```bash
 rustup update
 ```
-- Make sure cargo is in your PATH
+- Make sure the cargo binary directory is in your PATH
 
 **Note:** You can configure root to use your default profile's cargo binaries too.
 ```bash
@@ -112,7 +110,7 @@ I am just getting into creating completions. These will get better. Contributors
 
 ### ZSH
 
-Add this to your .zsh file if it doesn't exist. There might be a better way to do this. Contributors thoroughly encouraged.
+Add this to your .zshrc file if it doesn't exist. There might be a better way to do this. Contributors thoroughly encouraged.
 ```bash
 # Add dothub completions
 mkdir -p ~/.zsh/completions
