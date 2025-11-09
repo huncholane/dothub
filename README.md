@@ -2,9 +2,9 @@
   <img src="./doc/banner.png" />
 </div>
 <p align="center">
-    <a href="https://discord.gg/PdpX3vSHAC">Discord</a>
+    <a style="text-decoration:none" href="https://discord.gg/PdpX3vSHAC">Discord</a>
     ·
-    <a href="https://crates.io/crates/dothub">Crates</a>
+    <a style="text-decoration:none" href="https://crates.io/crates/dothub">Crates</a>
 </p>
 <hr>
 
@@ -132,7 +132,3 @@ There might be a better way to do this. Idk, haven't put much effort into it. Co
 cargo uninstall dothub
 rm -rf ~/.local/share/dothub
 ```
-
----
-#### Attributions
-<a href="https://www.flaticon.com/free-icons/discord" title="discord icons">Discord icons created by Freepik - Flaticon</a>
