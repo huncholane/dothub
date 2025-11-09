@@ -1,11 +1,11 @@
 [package]
 name = "dothub"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 description = "Minimal dotfile manager with a curated hub browser and fast linking"
 license = "MIT OR Apache-2.0"
 readme = "README.md"
-repository = "https://github.com/yourname/dothub"
+repository = "https://github.com/huncholane/dothub"
 keywords = ["dotfiles", "cli", "xdg", "neovim", "tmux"]
 categories = ["command-line-utilities"]
 
