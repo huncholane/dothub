@@ -1,11 +1,11 @@
 <div align="center">
   <img src="./doc/banner.png" />
 </div>
-<p align="center">
-    <a style="text-decoration:none" href="https://discord.gg/PdpX3vSHAC">Discord</a>
+<h4 align="center">
+    <a href="https://discord.gg/PdpX3vSHAC">Discord</a>
     ·
-    <a style="text-decoration:none" href="https://crates.io/crates/dothub">Crates</a>
-</p>
+    <a href="https://crates.io/crates/dothub">Crates</a>
+</h4>
 <hr>
 
 A community driven dotfile management platform. This is a golden opportunity for beginners and experts alike to make contributions to the beloved opensource community. Contributing can be as simple as adding your dotfiles to the hub.yml. Help is also wanted to solve issues and create features.
