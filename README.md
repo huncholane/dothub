@@ -8,7 +8,16 @@
 </h4>
 <hr>
 
-A community driven dotfile management platform. This is a golden opportunity for beginners and experts alike to make contributions to the beloved opensource community. Contributing can be as simple as adding your dotfiles to the hub.yml. Help is also wanted to solve issues and create features.
+A community driven dotfile management platform. This is a golden opportunity for 
+beginners and experts alike to make contributions to the open source community. 
+Contributing can be as simple as adding your dotfiles to the hub.yml. 
+Help is also wanted to solve issues and create features.
+
+## Use Cases
+
+- Switch in and out of dotfiles with one command
+- [Share](./hub.yml) your dotfiles with other dothub users
+- Effortlessly try out new dotfiles
 
 ## Installation
 
@@ -20,14 +29,13 @@ rustup update
 ```
 - Make sure the cargo binary directory is in your PATH
 
+```bash
+export PATH=$PATH:~/.cargo/bin
+```
 **Note:** You can configure root to use your default profile's cargo binaries too.
 ```bash
 # .zshrc|.bashrc|etc
 export PATH=$PATH:/home/<my_user>/.cargo/bin
-```
-Or simply
-```bash
-export PATH=$PATH:~/.cargo/bin
 ```
 
 ### Cargo Install
